@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GHOST App</title>
+  <style>
+    /* --- CSS Styling --- */
+    body {
+      background: #000;
+      color: #fff;
+      font-family: monospace;
+      padding: 20px;
+      text-align: center;
+      margin: 0;
+    }
+    input, button, textarea {
+      padding: 10px;
+      margin: 10px;
+      font-size: 16px;
+      width: 80%;
+      max-width: 300px;
+      border-radius: 5px;
+      border: 1px solid #fff;
+      background-color: #222;
+      color: #fff;
+    }
+    button {
+      background-color: #444;
+      font-weight: bold;
+    }
+    button:hover {
+      background-color: #666;
+    }
+    button.nuke {
+      background: red;
+    }
+    #appUI {
+      display: none;
+    }
+    .tab {
+      display: none;
+      margin-top: 20px;
+    }
+    #messageThread {
+      margin-top: 10px;
+      padding: 10px;
+      max-height: 400px;
+      overflow-y: scroll;
+      border: 1px solid #fff;
+    }
+  </style>
+</head>
+<body>
+  <!-- Setup Screen -->
+  <div id="setup">
+    <h2>Set Up Ghost Access</h2>
+    <input type="text" id="codeName" placeholder="Enter your code name" />
+    <input type="password" id="setPIN" placeholder="Set 4-digit PIN" maxlength="4" />
+    <button onclick="saveSetup()">Save &amp; Continue</button>
+  </div>
+
+  <!-- Login Screen -->
+  <div id="login" style="display:none;">
+    <h2>Enter PIN</h2>
+    <input type="password" id="pinInput" maxlength="4" />
+    <button onclick="verifyPIN()">Login</button>
+    <p id="loginStatus"></p>
+  </div>
+
+  <!-- Main App UI -->
+  <div id="appUI" style="display:none;">
+    <h2 id="userTag">Ghost Access Granted</h2>
+    <div id="nav">
+      <button onclick="showTab('messaging')">Messages</button>
+      <!-- You can add more tabs here -->
+    </div>
+
+    <!-- Messaging Tab -->
+    <div class="tab" id="messaging">
+      <h3>Encrypted Messaging</h3>
+      <input id="toUser" placeholder="Recipient name" />
+      <input id="messageInput" placeholder="Type a message" />
+      <button onclick="sendMessage()">Send Encrypted</button>
+      <div id="messageThread"></div>
+    </div>
+  </div>
+
+  <!-- Firebase and App Script -->
+  <script type="module">
+    // --- Firebase Realtime Database Setup ---
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-database.js";
+
+    // Replace with your Firebase config from your Firebase Console
+    const firebaseConfig = {
+      apiKey: "AIzaSyAWH_u_8qK2K_jbrn2_Pcp5UyUYUHFg_w",
+      authDomain: "ghost-app-fa2b4.firebaseapp.com",
+      databaseURL: "https://ghost-app-fa2b4-default-rtdb.firebaseio.com",
+      projectId: "ghost-app-fa2b4",
+      storageBucket: "ghost-app-fa2b4.appspot.com",
+      messagingSenderId: "63344368978",
+      appId: "1:63344368978:web:0aed1c03e6f06edb2fae8b"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // --- App Functions ---
+    function saveSetup() {
+      const codeName = document.getElementById("codeName").value;
+      const pin = document.getElementById("setPIN").value;
+      if (pin.length !== 4 || !codeName) {
+        alert("Please enter a code name and a 4-digit PIN.");
+        return;
+      }
+      localStorage.setItem("ghostName", codeName);
+      localStorage.setItem("ghostPIN", pin);
+      document.getElementById("setup").style.display = "none";
+      document.getElementById("login").style.display = "block";
+    }
+
+    function verifyPIN() {
+      const input = document.getElementById("pinInput").value;
+      const realPIN = localStorage.getItem("ghostPIN");
+      const status = document.getElementById("loginStatus");
+      if (input === realPIN) {
+        openApp();
+      } else if (input === realPIN.split("").reverse().join("")) {
+        status.innerText = "Ghost Spoof Mode Enabled.";
+        openApp(true);
+      } else {
+        status.innerText = "Incorrect PIN.";
+      }
+    }
+
+    function openApp(spoof = false) {
+      document.getElementById("login").style.display = "none";
+      document.getElementById("appUI").style.display = "block";
+      document.getElementById("userTag").innerText = `Welcome, ${localStorage.getItem("ghostName")}`;
+      if (!spoof) {
+        loadMessages();
+      } else {
+        document.getElementById("messaging").innerHTML = "<p>Secure messaging unavailable.</p>";
+      }
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll(".tab").forEach(t => t.style.display = "none");
+      document.getElementById(tab).style.display = "block";
+    }
+
+    function sendMessage() {
+      const sender = localStorage.getItem("ghostName");
+      const receiver = document.getElementById("toUser").value;
+      const message = document.getElementById("messageInput").value;
+      const timestamp = new Date().toISOString();
+      if (!receiver || !message) {
+        alert("Please enter a recipient and a message.");
+        return;
+      }
+      const msgRef = ref(db, "messages");
+      push(msgRef, { sender, receiver, message, timestamp });
+      document.getElementById("messageInput").value = "";
+    }
+
+    function loadMessages() {
+      const ghost = localStorage.getItem("ghostName");
+      const thread = document.getElementById("messageThread");
+      thread.innerHTML = "";
+      const msgRef = ref(db, "messages");
+      onChildAdded(msgRef, (snapshot) => {
+        const data = snapshot.val();
+        // Only display messages where the current user is either sender or receiver (and matching recipient field)
+        if ((data.sender === ghost && data.receiver === document.getElementById("toUser").value) ||
+            (data.receiver === ghost && data.sender === document.getElementById("toUser").value)) {
+          const msg = document.createElement("div");
+          msg.textContent = `${data.sender}: ${data.message}`;
+          thread.appendChild(msg);
+        }
+      });
+    }
+
+    // Expose functions to global scope for button clicks
+    window.saveSetup = saveSetup;
+    window.verifyPIN = verifyPIN;
+    window.sendMessage = sendMessage;
+    window.showTab = showTab;
+    window.loadMessages = loadMessages;
+  </script>
+</body>
+</html>
